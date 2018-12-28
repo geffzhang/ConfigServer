@@ -4,21 +4,24 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using ConfigServer.Sample.mvc.Models;
+using ConfigServer.Core;
 
 namespace ConfigServer.Sample.mvc.Controllers
 {
     public class HomeController : Controller
     {
-        private readonly SampleConfig config;
+        private readonly IConfigServer configServer;
 
-        public HomeController(SampleConfig config)
+        public HomeController(IConfigServer configServer)
         {
-            this.config = config;
+            this.configServer = configServer;
         }
 
         public IActionResult Index()
         {
-            return View(config);
+            var config = configServer.GetConfigAsync<SampleConfig>().Result;
+            var options = configServer.GetCollectionConfigAsync<OptionFromConfigSet>().Result;
+            return View(new ConfigViewModel { Config = config, Options = options});
         }
 
         public IActionResult About()
@@ -39,5 +42,14 @@ namespace ConfigServer.Sample.mvc.Controllers
         {
             return View();
         }
+
+        
+    }
+
+    public class ConfigViewModel
+    {
+        public SampleConfig Config { get; set; }
+        public IEnumerable<OptionFromConfigSet> Options { get; set; }
+
     }
 }

@@ -14,13 +14,52 @@ namespace ConfigServer.Core
         /// <returns>Initialized ConfigurationRegistry for specified type</returns>
         public static ConfigurationRegistration Build<TConfig>() where TConfig : class, new()
         {
-            return new ConfigurationRegistration(typeof(TConfig));
+            return new ConfigurationRegistration(typeof(TConfig), typeof(TConfig).Name, false);
         }
 
-        private ConfigurationRegistration(Type type)
+        /// <summary>
+        /// Builds new registration for configuration type 
+        /// </summary>
+        /// <typeparam name="TConfig">type of configuration to be registered</typeparam>
+        /// <param name="name">Name of config specified on the config server</param>
+        /// <returns>Initialized ConfigurationRegistry for specified type</returns>
+        public static ConfigurationRegistration Build<TConfig>(string name) where TConfig : class, new()
         {
-            ConfigurationName = type.Name;
+            return new ConfigurationRegistration(typeof(TConfig),name, false);
+        }
+
+        /// <summary>
+        /// Builds new registration for collection configuration type 
+        /// </summary>
+        /// <typeparam name="TConfig">type of configuration to be registered</typeparam>
+        /// <returns>Initialized ConfigurationRegistry for specified type</returns>
+        public static ConfigurationRegistration BuildCollection<TConfig>() where TConfig : class, new()
+        {
+            return new ConfigurationRegistration(typeof(TConfig), typeof(TConfig).Name, true);
+        }
+
+        /// <summary>
+        /// Builds new registration for collection configuration type 
+        /// </summary>
+        /// <typeparam name="TConfig">type of configuration to be registered</typeparam>
+        /// <param name="name">Name of config specified on the config server</param>
+        /// <returns>Initialized ConfigurationRegistry for specified type</returns>
+        public static ConfigurationRegistration BuildCollection<TConfig>(string name) where TConfig : class, new()
+        {
+            return new ConfigurationRegistration(typeof(TConfig), name, true);
+        }
+
+        /// <summary>
+        /// Constructs new ConfigurationRegistration
+        /// </summary>
+        /// <param name="type">type of configuration</param>
+        /// <param name="name">Name of configurations</param>
+        /// <param name="isCollection">is collection type</param>
+        public ConfigurationRegistration(Type type,string name, bool isCollection)
+        {
+            ConfigurationName = name;
             ConfigType = type;
+            IsCollection = isCollection;
         }
 
         /// <summary>
@@ -33,5 +72,10 @@ namespace ConfigServer.Core
         /// Configuration type
         /// </summary>
         public Type ConfigType { get; }
+
+        /// <summary>
+        /// Is Configuration Collection
+        /// </summary>
+        public bool IsCollection { get; }
     }
 }

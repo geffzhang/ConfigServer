@@ -1,5 +1,5 @@
 ﻿using ConfigServer.Client;
-using Microsoft.Extensions.Caching.Memory;
+using ConfigServer.TestModels;
 using Moq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
@@ -12,30 +12,31 @@ namespace ConfigServer.Core.Tests.Client
 {
     public class ConfigServerClientTest
     {
-        private readonly IConfigServerClient target;
+        private readonly IConfigServer target;
         private readonly ConfigurationRegistry collection;
         private readonly ConfigServerClientOptions options;
         private readonly Mock<IHttpClientWrapper> clientWrapper;
-        private readonly Mock<IMemoryCache> cache;
-
+        private const string configRegisration = "AnotherConfigName";
+        private const string clientId = "1234-5678-1234";
 
         public ConfigServerClientTest()
         {
             collection = new ConfigurationRegistry();
             collection.AddRegistration(ConfigurationRegistration.Build<SimpleConfig>());
-            options = new ConfigServerClientOptions();
-            options.ClientId = "1234-5678-1234";
-            options.ConfigServer = "https://test.com/Config";
+            collection.AddRegistration(ConfigurationRegistration.Build<SampleConfig>(configRegisration));
+            options = new ConfigServerClientOptions
+            {
+                ConfigServer = "https://test.com/Config"
+            };
             options.CacheOptions.IsDisabled = true;
             clientWrapper = new Mock<IHttpClientWrapper>();
-            cache = new Mock<IMemoryCache>();
-            target = new ConfigServerClient(clientWrapper.Object, cache.Object, collection, options);
+            target = new ConfigServerClient(clientWrapper.Object, new NoCachingStrategy(),new SingleClientIdProvider(clientId), collection, options);
         }
         #region Object
         [Fact]
         public async Task BuildConfigAsync_ThrowsExceptionIfConfigNotInRegistry()
         {
-            await Assert.ThrowsAsync<InvalidConfigurationException>(() => target.BuildConfigAsync(typeof(WrongConfig)));
+            await Assert.ThrowsAsync<InvalidConfigurationException>(() => target.GetConfigAsync(typeof(WrongConfig)));
         }
 
         [Fact]
@@ -43,8 +44,17 @@ namespace ConfigServer.Core.Tests.Client
         {
             clientWrapper.Setup(r => r.GetAsync(It.IsAny<Uri>()))
                 .Returns(() => Task.FromResult(BuildResponse(new SimpleConfig())));
-            await target.BuildConfigAsync(typeof(SimpleConfig));
+            await target.GetConfigAsync(typeof(SimpleConfig));
             clientWrapper.Verify(r => r.GetAsync(It.Is<Uri>(u => Check(u))), Times.AtLeastOnce());
+        }
+
+        [Fact]
+        public async Task BuildConfigAsync_CallsConfigurationServerWithCorrectUri_SpecifiedName()
+        {
+            clientWrapper.Setup(r => r.GetAsync(It.IsAny<Uri>()))
+                .Returns(() => Task.FromResult(BuildResponse(new SampleConfig())));
+            await target.GetConfigAsync(typeof(SampleConfig));
+            clientWrapper.Verify(r => r.GetAsync(It.Is<Uri>(u => CheckByName(u, configRegisration))), Times.AtLeastOnce());
         }
 
         [Fact]
@@ -52,7 +62,7 @@ namespace ConfigServer.Core.Tests.Client
         {
             clientWrapper.Setup(r => r.GetAsync(It.IsAny<Uri>()))
                 .Returns(() => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)));
-            await Assert.ThrowsAsync<ConfigServerCommunicationException>(() => target.BuildConfigAsync(typeof(SimpleConfig)));
+            await Assert.ThrowsAsync<ConfigServerCommunicationException>(() => target.GetConfigAsync(typeof(SimpleConfig)));
         }
 
         [Fact]
@@ -65,7 +75,7 @@ namespace ConfigServer.Core.Tests.Client
 
             clientWrapper.Setup(r => r.GetAsync(It.IsAny<Uri>()))
                 .Returns(() => Task.FromResult(BuildResponse(config)));
-            var result = await target.BuildConfigAsync(typeof(SimpleConfig));
+            var result = await target.GetConfigAsync(typeof(SimpleConfig));
             var castResult = result as SimpleConfig;
             Assert.NotNull(castResult);
             Assert.Equal(config.IntProperty, castResult.IntProperty);
@@ -75,7 +85,7 @@ namespace ConfigServer.Core.Tests.Client
         [Fact]
         public async Task BuildConfigAsync_T_ThrowsExceptionIfConfigNotInRegistry()
         {
-            await Assert.ThrowsAsync<InvalidConfigurationException>(() => target.BuildConfigAsync<WrongConfig>());
+            await Assert.ThrowsAsync<InvalidConfigurationException>(() => target.GetConfigAsync<WrongConfig>());
         }
 
         [Fact]
@@ -83,8 +93,17 @@ namespace ConfigServer.Core.Tests.Client
         {
             clientWrapper.Setup(r => r.GetAsync(It.IsAny<Uri>()))
                 .Returns(()=> Task.FromResult(BuildResponse(new SimpleConfig())));
-            await target.BuildConfigAsync<SimpleConfig>();
+            await target.GetConfigAsync<SimpleConfig>();
             clientWrapper.Verify(r => r.GetAsync(It.Is<Uri>(u => Check(u))), Times.AtLeastOnce());
+        }
+
+        [Fact]
+        public async Task BuildConfigAsync_T_CallsConfigurationServerWithCorrectUri_SpecifiedName()
+        {
+            clientWrapper.Setup(r => r.GetAsync(It.IsAny<Uri>()))
+                .Returns(() => Task.FromResult(BuildResponse(new SampleConfig())));
+            await target.GetConfigAsync<SampleConfig>();
+            clientWrapper.Verify(r => r.GetAsync(It.Is<Uri>(u => CheckByName(u, configRegisration))), Times.AtLeastOnce());
         }
 
         [Fact]
@@ -92,7 +111,7 @@ namespace ConfigServer.Core.Tests.Client
         {
             clientWrapper.Setup(r => r.GetAsync(It.IsAny<Uri>()))
                 .Returns(() => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound)));
-            await Assert.ThrowsAsync<ConfigServerCommunicationException>(() => target.BuildConfigAsync<SimpleConfig>());
+            await Assert.ThrowsAsync<ConfigServerCommunicationException>(() => target.GetConfigAsync<SimpleConfig>());
         }
 
         [Fact]
@@ -105,24 +124,28 @@ namespace ConfigServer.Core.Tests.Client
 
             clientWrapper.Setup(r => r.GetAsync(It.IsAny<Uri>()))
                 .Returns(() => Task.FromResult(BuildResponse(config)));
-            var result = await target.BuildConfigAsync<SimpleConfig>();
+            var result = await target.GetConfigAsync<SimpleConfig>();
 
             Assert.Equal(config.IntProperty, result.IntProperty);
         }
         #endregion
 
 
-        private bool Check(Uri uri)
+        private bool Check(Uri uri) => CheckByName(uri, typeof(SimpleConfig).Name);
+
+        private bool CheckByName(Uri uri, string name)
         {
-            var expectedUri = new Uri($"{options.ConfigServer}/{options.ClientId}/{typeof(SimpleConfig).Name}");
+            var expectedUri = new Uri($"{options.ConfigServer}/{clientId}/{name}");
             var result = uri.Equals(expectedUri);
             return result;
         }
-        
+
         private HttpResponseMessage BuildResponse(object content)
         {
-            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK);
-            response.Content = new StringContent(JsonConvert.SerializeObject(content, new JsonSerializerSettings { ContractResolver = new CamelCasePropertyNamesContractResolver() }));
+            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonConvert.SerializeObject(content, new JsonSerializerSettings { ContractResolver = new CamelCasePropertyNamesContractResolver() }))
+            };
             return response;
         }
 

@@ -1,6 +1,7 @@
 ﻿using System.Linq.Expressions;
+using System.Reflection;
 
-namespace ConfigServer.Server.ModelBuilders
+namespace ConfigServer.Server
 {
     internal class ExpressionHelper
     {
@@ -18,6 +19,12 @@ namespace ConfigServer.Server.ModelBuilders
                 body = ((UnaryExpression)expression.Body).Operand as MemberExpression;
             }
             return body;
+        }
+
+        public static PropertyInfo GetPropertyInfo(LambdaExpression expression)
+        {
+            var member = GetExpressionBody(expression);
+            return (PropertyInfo)member.Member;
         }
     }
 }

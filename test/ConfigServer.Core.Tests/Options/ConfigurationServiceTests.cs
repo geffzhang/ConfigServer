@@ -1,47 +1,47 @@
-﻿using ConfigServer.Core.Tests.TestModels;
-using ConfigServer.InMemoryProvider;
-using ConfigServer.Sample.Models;
-using ConfigServer.Server;
-using System.Collections.Generic;
+﻿using ConfigServer.Server;
 using System.Threading.Tasks;
 using Xunit;
+using Moq;
+using System;
+using ConfigServer.TestModels;
 
 namespace ConfigServer.Core.Tests.Options
 {
     public class ConfigurationServiceTests
     {
         private IConfigurationService target;
-        private InMemoryRepository repository;
+        private Mock<IConfigurationSetService> configurationSetService;
         private const string clientId = "7aa7d5f0-90fb-420b-a906-d482428a0c44";
+        private ConfigurationIdentity identity;
 
         public ConfigurationServiceTests()
         {
-            var registry = new ConfigurationSetRegistry();
+            var registry = new ConfigurationModelRegistry();
             registry.AddConfigurationSet(new SampleConfigSet().BuildConfigurationSetModel());
-            repository = new InMemoryRepository();
-            target = new ConfigurationService(repository, new TestOptionSetFactory(), registry);
+            configurationSetService = new Mock<IConfigurationSetService>();
+            identity = new ConfigurationIdentity(new ConfigurationClient(clientId), new Version(1, 0));
+            target = new ConfigurationService(configurationSetService.Object, registry);
         }
 
         [Fact]
-        public async Task CheckOptionsAreUpdated()
+        public async Task GetsConfigFromSets()
         {
-            var config = new SampleConfig();
-            config.Option = new Option { Id = 1, Description = "Not the right description" };
-            config.MoarOptions = new List<Option>
+            var config = new SampleConfig()
             {
-                new Option{ Id = 3, Description ="fail"},
-                OptionProvider.OptionTwo
+                IsLlamaFarmer = true
             };
-            await repository.UpdateConfigAsync(new ConfigInstance<SampleConfig>(config, clientId));
-            var result = await target.GetAsync(typeof(SampleConfig), new ConfigurationIdentity(clientId));
+            var configSet = new SampleConfigSet()
+            {
+                SampleConfig = new Config<SampleConfig>(config),
+                Instance = identity
+            };
+            configurationSetService.Setup(set => set.GetConfigurationSet(typeof(SampleConfigSet), identity))
+                .ReturnsAsync(configSet);
+            var result = await target.GetAsync(typeof(SampleConfig), identity);
             var mappedConfig = (SampleConfig)result.GetConfiguration();
 
-            Assert.Equal(config.Option.Description, OptionProvider.OptionOne.Description);
-            Assert.Equal(config.MoarOptions[0].Description, OptionProvider.OptionThree.Description);
-            Assert.Equal(config.MoarOptions[1], OptionProvider.OptionTwo);
-
-
-
+            Assert.Equal(config, mappedConfig);
+            Assert.Equal(config.IsLlamaFarmer, mappedConfig.IsLlamaFarmer);
 
         }
     }

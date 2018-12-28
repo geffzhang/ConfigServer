@@ -1,18 +1,14 @@
 ﻿using ConfigServer.Server;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Xunit;
 namespace ConfigServer.Core.Tests
 {
     public class ConfigurationModelBuilderTest
     {
-        private readonly ConfigurationModelBuilder<SimpleConfig> target;
+        private readonly ConfigurationModelBuilder<SimpleConfig, SimpleConfigSet> target;
 
         public ConfigurationModelBuilderTest()
         {
-            target = new ConfigurationModelBuilder<SimpleConfig>(new ConfigurationModel(nameof(SimpleConfig), typeof(SimpleConfig)));
+            target = new ConfigurationModelBuilder<SimpleConfig, SimpleConfigSet>(new ConfigurationModel<SimpleConfig, SimpleConfigSet>(nameof(SimpleConfigSet.Config), c=> c.Config, (set, c) => set.Config = c));
         }
 
 

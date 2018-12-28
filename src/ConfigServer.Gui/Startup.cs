@@ -1,16 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using ConfigServer.Core;
-using ConfigServer.Sample.mvc.Models;
 using ConfigServer.Server;
-using ConfigServer.InMemoryProvider;
+using ConfigServer.FileProvider;
+using ConfigServer.AzureBlobStorageProvider;
+using ConfigServer.Gui.Models;
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using ConfigServer.TestModels;
+using Microsoft.Extensions.FileProviders;
+using System.IO;
 
 namespace ConfigServer.Gui
 {
@@ -24,56 +26,30 @@ namespace ConfigServer.Gui
                 .AddJsonFile($"appsettings.{env.EnvironmentName}.json", optional: true)
                 .AddEnvironmentVariables();
             Configuration = builder.Build();
+            Env = env;
         }
 
+        public IHostingEnvironment Env { get; }
         public IConfigurationRoot Configuration { get; }
 
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
-            var applicationId = "3E37AC18-A00F-47A5-B84E-C79E0823F6D4";
-            var application2Id = "6A302E7D-05E9-4188-9612-4A2920E5C1AE";
             services.AddMvc();
+            services.AddMemoryCache();
             // Add framework services.
-            services.AddConfigServer()
+            var configserverBuilder = services.AddConfigServer()
+                .WithVersion(new Version(1, 0, 0))
+                .UseInMemoryCachingStrategy()
                 .UseConfigSet<SampleConfigSet>()
-                .UseInMemoryProvider();
+                .UseConfigSet<SampleConfigSetRequiringTag>();
+
+            UseFileStorage(configserverBuilder);
+            // Comment line above and uncomment line below to test azure blob storage provider
+            // UseAzureBlobStorage(configserverBuilder);
+
             services.AddTransient<IOptionProvider, OptionProvider>();
-
-            var optionProvider = new OptionProvider();
-            var config = new SampleConfig
-            {
-                LlamaCapacity = 23,
-                Name = "Name",
-                Decimal = 23.47m,
-                StartDate = new DateTime(2013, 10, 10),
-                IsLlamaFarmer = false,
-                Option = optionProvider.GetOptions().First(),
-                MoarOptions = optionProvider.GetOptions().Take(2).ToList(),
-                ListOfConfigs = new List<ListConfig>
-                {
-                    new ListConfig { Name = "Value One", Value = 1 },
-                    new ListConfig { Name = "Value Two", Value = 2 }
-                }
-            };
-            var config2 = new SampleConfig
-            {
-                LlamaCapacity = 41,
-                Name = "Name 2",
-                Decimal = 41.47m,
-                StartDate = new DateTime(2013, 11, 11),
-                Choice = Choice.OptionThree,
-                IsLlamaFarmer = true,
-                Option = optionProvider.GetOptions().First(),
-                MoarOptions = optionProvider.GetOptions().Take(2).ToList(),
-            };
-            var serviceProvider = services.BuildServiceProvider();
-            var configRepo = serviceProvider.GetService<IConfigRepository>();
-            configRepo.UpdateClientAsync(new ConfigurationClient { ClientId = applicationId,  Name = "Mvc App Live", Group="My app",  Enviroment="Live",  Description = "Embeded Application" }).Wait();
-            configRepo.UpdateClientAsync(new ConfigurationClient { ClientId = application2Id, Name = "Mvc App Test", Group = "My app", Enviroment = "UAT", Description = "Second Application" }).Wait();
-
-            configRepo.UpdateConfigAsync(new ConfigInstance<SampleConfig>(config, applicationId)).Wait();
-            configRepo.UpdateConfigAsync(new ConfigInstance<SampleConfig>(config2, application2Id)).Wait();
+            services.AddSingleton<UserProvider>();
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -83,9 +59,25 @@ namespace ConfigServer.Gui
             loggerFactory.AddDebug();
 
             app.UseDeveloperExceptionPage();
-            app.UseBrowserLink();
+            app.Use(AddUserContext);
+            app.UseStaticFiles(new StaticFileOptions()
+            {
+                OnPrepareResponse = (context) =>
+                {
+                    context.Context.Response.Headers["Cache-Control"] = "no-cache, no-store";
+                    context.Context.Response.Headers["Pragma"] = "no-cache";
+                    context.Context.Response.Headers["Expires"] = "-1";
+                }
+            });
+            var path = "node_modules";
+            app.UseStaticFiles(new StaticFileOptions
+            {
+                FileProvider = new PhysicalFileProvider(
+                Path.Combine(env.ContentRootPath, path)
+                    ),
+                RequestPath = "/" + path
+            });
 
-            app.UseStaticFiles();
 
             app.UseMvc(routes =>
             {
@@ -93,12 +85,39 @@ namespace ConfigServer.Gui
                     name: "default",
                     template: "{controller=Home}/{action=Index}/{id?}");
             });
-            app.UseConfigServer(new ConfigServerOptions {
-                ServerAuthenticationOptions = new ConfigServerAuthenticationOptions { RequireAuthentication = false },
-                ManagerAuthenticationOptions = new ConfigServerAuthenticationOptions { RequireAuthentication = false }
-
-
-            });
+            app.UseConfigServer(new ConfigServerOptions());
         }
+
+        private void UseFileStorage(ConfigServerBuilder builder)
+        {
+            builder.UseFileConfigProvider(new FileConfigRespositoryBuilderOptions { ConfigStorePath = Env.ContentRootPath + "/FileStore/Configs" })
+            .UseFileResourceProvider(new FileResourceRepositoryBuilderOptions { ResourceStorePath = Env.ContentRootPath + "/FileStore/Resources" });
+        }
+
+        private void UseAzureBlobStorage(ConfigServerBuilder builder)
+        {
+            builder.UseAzureBlobStorageConfigProvider(new AzureBlobStorageRepositoryBuilderOptions
+            {
+                Uri = new Uri("http://127.0.0.1:10000/devstoreaccount1"),
+                Credentials = new Microsoft.WindowsAzure.Storage.Auth.StorageCredentials("devstoreaccount1", "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="),
+                Container = "configs",
+            })
+                .UseAzureBlobStorageResourceProvider(new AzureBlobStorageResourceStoreOptions
+                {
+                    Uri = new Uri("http://127.0.0.1:10000/devstoreaccount1"),
+                    Credentials = new Microsoft.WindowsAzure.Storage.Auth.StorageCredentials("devstoreaccount1", "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="),
+                    Container = "resources",
+                });
+        }
+
+        private Task AddUserContext(HttpContext context, Func<Task> next)
+        {
+            var userProvider = context.RequestServices.GetService<UserProvider>();
+            var pricipal = userProvider.GetPrincipal();
+            context.User = pricipal;
+            return next();
+        }
+
     }
+
 }

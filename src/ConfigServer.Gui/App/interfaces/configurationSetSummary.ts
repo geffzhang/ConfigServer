@@ -1,13 +1,9 @@
-﻿export interface ConfigurationSetSummary {
+﻿import { IConfigurationModelSummary } from "./configurationModelSummary";
+
+export interface IConfigurationSetSummary {
     configurationSetId: string;
     name: string;
     description: string;
-    configs: ConfigurationModelSummary[];
-}
-
-export interface ConfigurationModelSummary
-{
-    id: string;
-    displayName: string;
-    description: string;
+    requiredClientTag: string;
+    configs: IConfigurationModelSummary[];
 }

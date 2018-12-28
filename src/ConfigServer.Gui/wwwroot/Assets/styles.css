@@ -1,22 +1,25 @@
 ﻿body {
-    margin:5px 20px;
-    color:#404040;
-    background:#eeeeee;
-    font-size:16px;
-    font-family: sans-serif;
+    margin: 5px 20px;
+    color: #646982;
+    background: #eeeeee;
+    font-size: 16px;
+    font-family: Arial;
 }
 
 h1 {
     font-size:3em;
     display:inline;
     padding-right:25px;
-    border-bottom: 3px solid #ABB8FF
 }
 
 h2 {
     font-size:2em;
     padding-left:3px;
-    border-left: 3px solid #ABB8FF
+}
+
+h5 {
+    font-size: 1em;
+    font-weight:700;
 }
 
 button {
@@ -26,27 +29,88 @@ button {
 }
 
 .break {
-    height:1px;
-    border-bottom: 3px solid #ABB8FF;
-    clear:both;
-    margin-bottom:5px;
+    height: 1px;
+    border-bottom: 3px solid #646982;
+    clear: both;
+    margin-bottom: 5px;
+    margin-top: 1px;
 }
 
 .item {
-    display:inline-block;
-    border: 1px solid #ABB8FF;
+    display: inline-block;
+    border: 1px solid #646982;
     margin: 4px;
     padding: 3px;
-    max-width:400px
-}
-
-.configProperty{
-    display:inline-block;
-    margin:5px;
-    vertical-align:top;
+    width: 100%;
 }
 
 .group {
     margin: 5px 0;
-    border-bottom: 3px solid #ABB8FF;
+    border-bottom: 3px solid #646982;
 }
+
+.errorMessage {
+    color: #f03241
+}
+
+.fileUpload {
+    position: relative;
+    overflow: hidden;
+}
+.fileUpload input.upload {
+    position: absolute;
+    top: 0;
+    right: 0;
+    margin: 0;
+    padding: 0;
+    font-size: 20px;
+    cursor: pointer;
+    opacity: 0;
+    filter: alpha(opacity=0);
+}
+.upload-text {
+    width: 100%;
+    cursor: pointer;
+}
+
+.glyphicon-btn {
+    line-height: inherit;
+}
+
+td {
+    padding-top: 3px;
+    padding-right: 3px;
+}
+
+table {
+    width: 100%;
+}
+
+.column-btn {
+    width: 45px;
+}
+
+.selectable-panel {
+    border: 2px solid #cccccc;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 4px;
+}
+
+.selectable-panel-selected {
+    border: 2px solid #007700;
+}
+
+snapshot-input {
+    vertical-align: middle;
+    display: inline-block;
+}
+
+.snapshot-input-group {
+    width: 320px;
+} 
+
+.full-width {
+    width:100%;
+}
+

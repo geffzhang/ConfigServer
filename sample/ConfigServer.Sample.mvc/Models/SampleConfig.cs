@@ -1,4 +1,5 @@
-﻿using System;
+﻿using ConfigServer.Server;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -18,14 +19,19 @@ namespace ConfigServer.Sample.mvc.Models
         public Option Option { get; set; }
         public List<Option> MoarOptions { get; set; }
         public List<ListConfig> ListOfConfigs { get; set; }
+        [Option(typeof(OptionFromConfigSetOptionProvider))]
+        public OptionFromConfigSet OptionFromConfigSet { get; set; }
+        [Option(typeof(OptionFromConfigSetOptionProvider))]
+        public List<OptionFromConfigSet> MoarOptionFromConfigSet { get; set; }
+
     }
 
 
     public enum Choice
     {
-        OptionOne =0,
-        OptionTwo =1,
-        OptionThree =3
+        OptionOne = 0,
+        OptionTwo = 1,
+        OptionThree = 3
     }
 
     public class Option
@@ -38,5 +44,20 @@ namespace ConfigServer.Sample.mvc.Models
     {
         public string Name { get; set; }
         public int Value { get; set; }
+    }
+
+    public class OptionFromConfigSet
+    {
+        public int Id { get; set; }
+        public string Description { get; set; }
+        public double Value { get; set; }
+    }
+
+    public class OptionFromConfigSetOptionProvider : ConfigurationSetOptionValueProvider<SampleConfigSet, OptionFromConfigSet, int>
+    {
+        public OptionFromConfigSetOptionProvider() : base((SampleConfigSet set) => set.Options, (OptionFromConfigSet o) => o.Id)
+        {
+
+        }
     }
 }

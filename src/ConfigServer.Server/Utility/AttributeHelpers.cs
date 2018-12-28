@@ -13,5 +13,15 @@ namespace ConfigServer.Server
             return (T)property.GetCustomAttributes(attrType, false).FirstOrDefault();
         }
 
+        public static bool HasAttribute<T>(this PropertyInfo info) where T : Attribute
+        {
+            return info.GetCustomAttributes<T>().Any();
+        }
+
+        public static T SingleAttributeOrDefault<T>(this Type type) where T : Attribute
+        {
+            return type.GetTypeInfo().GetCustomAttributes<T>().SingleOrDefault();
+        }
+
     }
 }

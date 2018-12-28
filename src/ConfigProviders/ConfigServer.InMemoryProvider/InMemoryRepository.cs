@@ -3,15 +3,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Collections;
 
 namespace ConfigServer.InMemoryProvider
 {
     /// <summary>
     /// In memory implementation of IConfigRepository
     /// </summary>
-    public class InMemoryRepository : IConfigRepository
+    public class InMemoryRepository : IConfigRepository, IConfigClientRepository
     {
         private readonly Dictionary<string, ConfigurationClient> clientStore;
+        private readonly Dictionary<string, ConfigurationClientGroup> clientGroupStore;
         private readonly Dictionary<string, Dictionary<Type, ConfigInstance>> innerStore;
         
         /// <summary>
@@ -20,6 +22,7 @@ namespace ConfigServer.InMemoryProvider
         public InMemoryRepository()
         {
             clientStore = new Dictionary<string, ConfigurationClient>();
+            clientGroupStore = new Dictionary<string, ConfigurationClientGroup>();
             innerStore = new Dictionary<string, Dictionary<Type, ConfigInstance>>();
         }
 
@@ -50,14 +53,38 @@ namespace ConfigServer.InMemoryProvider
         /// <summary>
         /// Gets Configuration
         /// </summary>
-        /// <typeparam name="TConfig">Type of configuration to be retrieved</typeparam>
+        /// <typeparam name="TConfiguration">Type of configuration to be retrieved</typeparam>
         /// <param name="id">Identity of Configuration requested i.e which client requested the configuration</param>
         /// <returns>ConfigInstance of the type requested</returns>
-        public Task<ConfigInstance<TConfig>> GetAsync<TConfig>(ConfigurationIdentity id) where TConfig : class, new()
+        public Task<ConfigInstance<TConfiguration>> GetAsync<TConfiguration>(ConfigurationIdentity id) where TConfiguration : class, new()
         {
-            var tcs = new TaskCompletionSource<ConfigInstance<TConfig>>();
-            tcs.SetResult(Get<TConfig>(id));
+            var tcs = new TaskCompletionSource<ConfigInstance<TConfiguration>>();
+            tcs.SetResult(Get<TConfiguration>(id));
             return tcs.Task;
+        }
+
+        /// <summary>
+        /// Gets Collection Configuration
+        /// </summary>
+        /// <typeparam name="TConfiguration">Type of configuration to be retrieved</typeparam>
+        /// <param name="id">Identity of Configuration requested i.e which client requested the configuration</param>
+        /// <returns>Enumerable of the type requested</returns>
+        public Task<IEnumerable<TConfiguration>> GetCollectionAsync<TConfiguration>(ConfigurationIdentity id) where TConfiguration : class, new()
+        {
+            var item = (IEnumerable<TConfiguration>)Get(typeof(TConfiguration), id).GetConfiguration();
+            return Task.FromResult(item);
+        }
+
+        /// <summary>
+        /// Gets Collection Configuration
+        /// </summary>
+        /// <param name="type">Type of configuration to be retrieved</param>
+        /// <param name="id">Identity of Configuration requested i.e which client requested the configuration</param>
+        /// <returns>Enumerable of the type requested</returns>
+        public Task<IEnumerable> GetCollectionAsync(Type type, ConfigurationIdentity id)
+        {
+            var item = (IEnumerable)Get(type, id).GetConfiguration();
+            return Task.FromResult(item);
         }
 
         /// <summary>
@@ -89,13 +116,33 @@ namespace ConfigServer.InMemoryProvider
             return tcs.Task;
         }
 
+        /// <summary>
+        /// Get all Client Groups in store
+        /// </summary>
+        /// <returns>Available Client Groups</returns>
+        public Task<IEnumerable<ConfigurationClientGroup>> GetClientGroupsAsync()
+        {
+            var results = clientGroupStore.Values;
+            return Task.FromResult<IEnumerable<ConfigurationClientGroup>>(results);
+        }
+
+        /// <summary>
+        /// Creates or updates client group details in store
+        /// </summary>
+        /// <param name="clientGroup">Updated Client Group details</param>
+        /// <returns>A task that represents the asynchronous update operation.</returns>
+        public Task UpdateClientGroupAsync(ConfigurationClientGroup clientGroup)
+        {
+            clientGroupStore[clientGroup.GroupId] = clientGroup;
+            return Task.FromResult(true);
+        }
+
         private ConfigInstance Get(Type type, ConfigurationIdentity id)
         {
-            var innerDic = innerStore[id.ClientId];
-            ConfigInstance config;
-            if (!innerDic.TryGetValue(type, out config))
+            var innerDic = innerStore[id.Client.ClientId];
+            if (!innerDic.TryGetValue(type, out var config))
             {
-                config = ConfigFactory.CreateGenericInstance(type, id.ClientId);
+                config = ConfigFactory.CreateGenericInstance(type, id);
             }
 
             return config;
@@ -113,10 +160,10 @@ namespace ConfigServer.InMemoryProvider
 
         private void SaveChanges(ConfigInstance config)
         {
-            if (!innerStore.ContainsKey(config.ClientId))
-                innerStore.Add(config.ClientId, new Dictionary<Type, ConfigInstance>());
+            if (!innerStore.ContainsKey(config.ConfigurationIdentity.Client.ClientId))
+                innerStore.Add(config.ConfigurationIdentity.Client.ClientId, new Dictionary<Type, ConfigInstance>());
 
-            innerStore[config.ClientId][config.ConfigType] = config;
+            innerStore[config.ConfigurationIdentity.Client.ClientId][config.ConfigType] = config;
         }
 
         private void CreateConfigSet(ConfigurationClient client)
@@ -124,6 +171,7 @@ namespace ConfigServer.InMemoryProvider
             clientStore.Add(client.ClientId, client);
             innerStore.Add(client.ClientId, new Dictionary<Type, ConfigInstance>());
         }
+
 
     }
 }

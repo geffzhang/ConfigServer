@@ -1,8 +1,7 @@
 ﻿using ConfigServer.InMemoryProvider;
 using ConfigServer.Server;
+using Moq;
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -11,23 +10,34 @@ namespace ConfigServer.Core.Tests
     public class LocalConfigServerTests
     {
         readonly IConfigRepository repository;
-        const string configSetId = "3E37AC18-A00F-47A5-B84E-C79E0823F6D4";
-
+        readonly Mock<IConfigurationClientService> clientservice;
+        readonly Mock<IResourceStore> resourceStore;
+        readonly Mock<IConfigurationModelRegistry> registry;
+        const string clientId = "3E37AC18-A00F-47A5-B84E-C79E0823F6D4";
+        readonly ConfigurationIdentity configIdentity = new ConfigurationIdentity(new ConfigurationClient(clientId), new Version(1, 0));
+        
         public LocalConfigServerTests()
         {
             var configurationCollection = new ConfigurationRegistry();
             configurationCollection.AddRegistration(ConfigurationRegistration.Build<SimpleConfig>());
-            repository = new InMemoryRepository();
-            
+            var repo = new InMemoryRepository();
+            repository = repo;
+            clientservice = new Mock<IConfigurationClientService>();
+            clientservice.Setup(service => service.GetClientOrDefault(configIdentity.Client.ClientId))
+                .ReturnsAsync(configIdentity.Client);
+            registry = new Mock<IConfigurationModelRegistry>();
+            registry.Setup(s => s.GetVersion())
+                .Returns(() => configIdentity.ServerVersion);
+            resourceStore = new Mock<IResourceStore>();
         }
 
         [Fact]
         public async Task CanGetConfig()
         {
             var expected = 23;
-            await repository.UpdateConfigAsync(new ConfigInstance<SimpleConfig>(new SimpleConfig { IntProperty = expected }, configSetId));
-            var localServer = new LocalConfigServerClient(repository,configSetId);
-            var config =await localServer.BuildConfigAsync<SimpleConfig>();
+            await repository.UpdateConfigAsync(new ConfigInstance<SimpleConfig>(new SimpleConfig { IntProperty = expected }, configIdentity));
+            var localServer = new LocalConfigServerClient(repository, clientservice.Object, registry.Object, new SingleClientIdProvider(clientId));
+            var config =await localServer.GetConfigAsync<SimpleConfig>();
             Assert.Equal(expected, config.IntProperty);
         }
 
@@ -35,9 +45,9 @@ namespace ConfigServer.Core.Tests
         public async Task CanGetConfig_ByType()
         {
             var expected = 23;
-            await repository.UpdateConfigAsync(new ConfigInstance<SimpleConfig>(new SimpleConfig { IntProperty = expected },configSetId));
-            var localServer = new LocalConfigServerClient(repository, configSetId);
-            var config = await localServer.BuildConfigAsync(typeof(SimpleConfig));
+            await repository.UpdateConfigAsync(new ConfigInstance<SimpleConfig>(new SimpleConfig { IntProperty = expected },configIdentity));
+            var localServer = new LocalConfigServerClient(repository, clientservice.Object, registry.Object, new SingleClientIdProvider(clientId));
+            var config = await localServer.GetConfigAsync(typeof(SimpleConfig));
             var castedConfig = (SimpleConfig)config;
             Assert.Equal(expected, castedConfig.IntProperty);
         }

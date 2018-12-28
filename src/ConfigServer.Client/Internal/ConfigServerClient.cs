@@ -2,69 +2,77 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using System;
-using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Caching.Memory;
-
-[assembly: InternalsVisibleTo("ConfigServer.Core.Tests")]
+using System.Collections.Generic;
 namespace ConfigServer.Client
 {
-    internal class ConfigServerClient : IConfigServerClient
+
+    internal class ConfigServerClient : IConfigServer
     {
-        private readonly ConfigurationRegistry collection;
+        private readonly IConfigurationRegistry collection;
         private readonly ConfigServerClientOptions options;
         private readonly IHttpClientWrapper client;
-        private readonly IMemoryCache cache;
+        private readonly IClientCachingStrategy cache;
+        private readonly IClientIdProvider clientIdProvider;
         private const string cachePrefix = "ConfigServer_";
 
-
-        public ConfigServerClient(IHttpClientWrapper client, IMemoryCache memorycache, ConfigurationRegistry collection, ConfigServerClientOptions options)
+        public ConfigServerClient(IHttpClientWrapper client, IClientCachingStrategy cache,IClientIdProvider clientIdProvider, IConfigurationRegistry collection, ConfigServerClientOptions options)
         {
             this.client = client;
             this.collection = collection;
             this.options = options;
-            if (memorycache == null && !options.CacheOptions.IsDisabled)
-                throw new ArgumentNullException(nameof(memorycache), "Caching is enabled, but IMemoryCache is not registered in service collection. Try adding \"services.AddMemoryCache()\" to startup file");
-            this.cache = memorycache;
+            this.cache = cache;
+            this.clientIdProvider = clientIdProvider;
         }
 
-        public Task<object> BuildConfigAsync(Type type)
+        public Task<TConfig> GetConfigAsync<TConfig>() where TConfig : class, new()
         {
-            ThrowIfConfigNotRegistered(type);
-            if(options.CacheOptions.IsDisabled)
-                return GetConfig(type);
-
-            return GetOrAddConfigFromCache(type);
-
+            return GetConfigAsync<TConfig>(clientIdProvider.GetCurrentClientId());
         }
 
-        public async Task<TConfig> BuildConfigAsync<TConfig>() where TConfig : class, new()
+        public async Task<TConfig> GetConfigAsync<TConfig>(string clientId) where TConfig : class, new()
         {
-            return (TConfig)await BuildConfigAsync(typeof(TConfig));
+            return (TConfig)await GetConfigAsync(typeof(TConfig), clientId).ConfigureAwait(false);
         }
 
-        private Task<object> GetOrAddConfigFromCache(Type type)
+        public Task<object> GetConfigAsync(Type type)
         {
-            return cache.GetOrCreateAsync(BuildCacheKey(type), cacheEntry =>
-            {
-                if (options.CacheOptions.AbsoluteExpiration.HasValue)
-                    cacheEntry.SetAbsoluteExpiration(options.CacheOptions.AbsoluteExpiration.Value);
-                if (options.CacheOptions.SlidingExpiration.HasValue)
-                    cacheEntry.SetAbsoluteExpiration(options.CacheOptions.SlidingExpiration.Value);
-                return GetConfig(type);
-            });
+            return GetConfigAsync(type, clientIdProvider.GetCurrentClientId());
         }
 
-        private async Task<object> GetConfig(Type type)
+        public async Task<object> GetConfigAsync(Type type, string clientId)
         {
-            var result = await GetConfig(type.Name);
-            return JsonConvert.DeserializeObject(result, type, new JsonSerializerSettings { ContractResolver = new CamelCasePropertyNamesContractResolver() });
+            var registration = GetRegistration(type);
+            return await cache.GetOrCreateAsync(BuildCacheKey(registration.ConfigType, clientId), () => GetConfigInternal(registration, clientId)).ConfigureAwait(false);
         }
 
-        private async Task<string> GetConfig(string configName)
+        public Task<IEnumerable<TConfig>> GetCollectionConfigAsync<TConfig>() where TConfig : class, new()
         {
-            var uri = GetUri(configName);
+            return GetCollectionConfigAsync<TConfig>(clientIdProvider.GetCurrentClientId());
+        }
+
+        public async Task<IEnumerable<TConfig>> GetCollectionConfigAsync<TConfig>(string clientId) where TConfig : class, new()
+        {
+            var type = typeof(TConfig);
+            var registration = GetRegistration(type);
+            return await cache.GetOrCreateAsync(BuildCacheKey(typeof(TConfig), clientId), () => GetCollectionConfigInternal<TConfig>(registration, clientId)).ConfigureAwait(false);
+        }
+
+        private async Task<object> GetConfigInternal(ConfigurationRegistration registration, string clientId)
+        {
+            var result = await GetConfig(registration.ConfigurationName, clientId);
+            return JsonConvert.DeserializeObject(result, registration.ConfigType, new JsonSerializerSettings { ContractResolver = new CamelCasePropertyNamesContractResolver() });
+        }
+
+        private async Task<IEnumerable<TConfig>> GetCollectionConfigInternal<TConfig>(ConfigurationRegistration registration, string clientId)
+        {
+            var result = await GetConfig(registration.ConfigurationName, clientId);
+            return (IEnumerable<TConfig>)JsonConvert.DeserializeObject(result,typeof(List<TConfig>), new JsonSerializerSettings { ContractResolver = new CamelCasePropertyNamesContractResolver() });
+        }
+
+        private async Task<string> GetConfig(string configName, string clientId)
+        {
+            var uri = GetUri(configName, clientId);
             var response = await client.GetAsync(uri);
 
             if (!response.IsSuccessStatusCode)
@@ -75,19 +83,19 @@ namespace ConfigServer.Client
 
         }
 
-        private Uri GetUri(string configName)
+        private Uri GetUri(string configName, string clientId)
         {
-            return new Uri($"{options.ConfigServer}/{options.ClientId}/{configName}");
+            return new Uri($"{options.ConfigServer}/{clientId}/{configName}");
         }
 
-        private void ThrowIfConfigNotRegistered(Type type)
+        private ConfigurationRegistration GetRegistration(Type type)
         {
-            if (!collection.Any(reg => reg.ConfigType == type))
-                throw new InvalidConfigurationException(type);
+            if (collection.TryGet(type, out var result))
+                return result;
+            throw new InvalidConfigurationException(type);
         }
 
-        private string BuildCacheKey(Type type) => cachePrefix + type.Name;
+        private string BuildCacheKey(Type type, string clientId) => $"{cachePrefix}{clientId}_s{type.Name}";
+
     }
-
-
 }

@@ -1,9 +1,10 @@
 ﻿using ConfigServer.Core;
 using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace ConfigServer.TextProvider.Core
@@ -15,32 +16,18 @@ namespace ConfigServer.TextProvider.Core
     {
 
         readonly JsonSerializerSettings jsonSerializerSettings;
-        readonly IMemoryCache memoryCache;
         readonly IStorageConnector storageConnector;
-        private const string cachePrefix = "ConfigServer_ConfigRepository_";
 
         /// <summary>
         /// Initializes File store
         /// </summary>
-        public TextStorageConfigurationRepository(IMemoryCache memoryCache,IStorageConnector storageConnector, ITextStorageSetting options)
+        public TextStorageConfigurationRepository(IStorageConnector storageConnector)
         {
-            jsonSerializerSettings = options.JsonSerializerSettings;
-            this.memoryCache = memoryCache;
+            jsonSerializerSettings = new JsonSerializerSettings();
             this.storageConnector = storageConnector;
         }
 
-        /// <summary>
-        /// Creates or updates client details in store
-        /// </summary>
-        /// <param name="client">Updated Client detsils</param>
-        /// <returns>A task that represents the asynchronous update operation.</returns>
-        public async Task UpdateClientAsync(ConfigurationClient client)
-        {
-            var clients = await GetClientsAsync();
-            var clientLookup = clients.ToDictionary(k => k.ClientId);
-            clientLookup[client.ClientId] = client;
-            await SaveClients(clientLookup.Values);
-        }
+
 
         /// <summary>
         /// Gets Configuration
@@ -51,39 +38,56 @@ namespace ConfigServer.TextProvider.Core
         public async Task<ConfigInstance> GetAsync(Type type, ConfigurationIdentity id)
         {
             var configId = type.Name;
-            var configPath = GetCacheKey(configId, id.ClientId);
-            var result = ConfigFactory.CreateGenericInstance(type, id.ClientId);
-            var json = await memoryCache.GetOrCreateAsync(cachePrefix + configPath, e => {
-                e.SetSlidingExpiration(TimeSpan.FromMinutes(5));
-                return storageConnector.GetConfigFileAsync(type.Name, id.ClientId);
-            });
+            var result = ConfigFactory.CreateGenericInstance(type, id);
+            var json = await storageConnector.GetConfigFileAsync(type.Name, id.Client.ClientId);
 
             if (!string.IsNullOrWhiteSpace(json))
-                result.SetConfiguration(JsonConvert.DeserializeObject(json, type, jsonSerializerSettings));
+                result.SetConfiguration(ConfigStorageObjectHelper.ParseConfigurationStoredObject(json, type));
             return result;
         }
 
         /// <summary>
         /// Gets Configuration
         /// </summary>
-        /// <typeparam name="TConfig">Type of configuration to be retrieved</typeparam>
+        /// <typeparam name="TConfiguration">Type of configuration to be retrieved</typeparam>
         /// <param name="id">Identity of Configuration requested i.e which client requested the configuration</param>
         /// <returns>ConfigInstance of the type requested</returns>
-        public async Task<ConfigInstance<TConfig>> GetAsync<TConfig>(ConfigurationIdentity id) where TConfig : class, new()
+        public async Task<ConfigInstance<TConfiguration>> GetAsync<TConfiguration>(ConfigurationIdentity id) where TConfiguration : class, new()
         {
-            var result = await GetAsync(typeof(TConfig), id);
-            return (ConfigInstance<TConfig>)result;
+            var result = await GetAsync(typeof(TConfiguration), id);
+            return (ConfigInstance<TConfiguration>)result;
         }
 
         /// <summary>
-        /// Get all Client in store
+        /// Gets Collection Configuration
         /// </summary>
-        /// <returns>Available Client</returns>
-        public async Task<IEnumerable<ConfigurationClient>> GetClientsAsync()
+        /// <typeparam name="TConfiguration">Type of configuration to be retrieved</typeparam>
+        /// <param name="id">Identity of Configuration requested i.e which client requested the configuration</param>
+        /// <returns>Enumerable of the type requested</returns>
+        public async Task<IEnumerable<TConfiguration>> GetCollectionAsync<TConfiguration>(ConfigurationIdentity id) where TConfiguration : class, new()
         {
-            var json = await storageConnector.GetClientRegistryFileAsync();
-            return JsonConvert.DeserializeObject<List<ConfigurationClient>>(json, jsonSerializerSettings)?? Enumerable.Empty<ConfigurationClient>();
+            var config = await GetCollectionAsync(typeof(TConfiguration), id);
+            return (IEnumerable<TConfiguration>)config;
         }
+
+        /// <summary>
+        /// Gets Collection Configuration
+        /// </summary>
+        /// <param name="type">Type of configuration to be retrieved</param>
+        /// <param name="id">Identity of Configuration requested i.e which client requested the configuration</param>
+        /// <returns>Enumerable of the type requested</returns>
+        public async Task<IEnumerable> GetCollectionAsync(Type type, ConfigurationIdentity id)
+        {
+            var configId = type.Name;
+            var json = await storageConnector.GetConfigFileAsync(type.Name, id.Client.ClientId);
+
+            var configType = BuildGenericType(typeof(List<>), type);
+            if (!string.IsNullOrWhiteSpace(json))
+                 return (IEnumerable)ConfigStorageObjectHelper.ParseConfigurationStoredObject(json, configType);
+            return (IEnumerable)Activator.CreateInstance(configType);
+        }
+
+
 
         /// <summary>
         /// Saves changes to configuration
@@ -93,18 +97,13 @@ namespace ConfigServer.TextProvider.Core
         public async Task UpdateConfigAsync(ConfigInstance config)
         {
             var configId = config.ConfigType.Name;
-            var configPath = GetCacheKey(configId, config.ClientId);
-            var configText = JsonConvert.SerializeObject(config.GetConfiguration(), jsonSerializerSettings);
-            await storageConnector.SetConfigFileAsync(configId, config.ClientId,configText);
-            memoryCache.Set<string>(cachePrefix + configPath, configText, new MemoryCacheEntryOptions().SetSlidingExpiration(TimeSpan.FromMinutes(5)));            
+            var configText = JsonConvert.SerializeObject(ConfigStorageObjectHelper.BuildStorageObject(config), jsonSerializerSettings);
+            await storageConnector.SetConfigFileAsync(configId, config.ConfigurationIdentity.Client.ClientId, configText);        
         }
 
-        private string GetCacheKey(string configId, string clientId) => $"{clientId}_{configId}";
-
-        private async Task SaveClients(ICollection<ConfigurationClient> clients)
+        private static Type BuildGenericType(Type genericType, params Type[] typeArgs)
         {
-            var json = JsonConvert.SerializeObject(clients, jsonSerializerSettings);
-            await storageConnector.SetClientRegistryFileAsync(json);
+            return genericType.MakeGenericType(typeArgs);
         }
     }
 }

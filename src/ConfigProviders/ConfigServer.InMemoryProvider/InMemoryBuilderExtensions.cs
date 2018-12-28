@@ -18,8 +18,10 @@ namespace ConfigServer.InMemoryProvider
         public static ConfigServerBuilder UseInMemoryProvider(this ConfigServerBuilder builder)
         {
             var repo = new InMemoryRepository();
+            builder.ServiceCollection.Add(ServiceDescriptor.Singleton<IConfigClientRepository>(repo));
             builder.ServiceCollection.Add(ServiceDescriptor.Singleton<IConfigRepository>(repo));
             builder.ServiceCollection.Add(ServiceDescriptor.Singleton<IConfigProvider>(repo));
+            builder.ServiceCollection.Add(ServiceDescriptor.Singleton<IConfigurationSnapshotRepository>(new InMemorySnapshotRepository()));
             return builder;
         }
     }

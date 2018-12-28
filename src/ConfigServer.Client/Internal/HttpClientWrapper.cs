@@ -17,26 +17,32 @@ namespace ConfigServer.Client
         Task<HttpResponseMessage> GetAsync(Uri uri);
     }
 
-    internal class HttpClientWrapper : IHttpClientWrapper
+    /// <summary>
+    /// Wrapper for HttpClient
+    /// </summary>
+    public class HttpClientWrapper : IHttpClientWrapper
     {
-        readonly IConfigServerClientAuthenticator authenticator;
+        private readonly IConfigServerClientAuthenticator authenticator;
+        private readonly HttpClient client;
 
+        /// <summary>
+        /// Contructor for IHttpClientWrapper
+        /// </summary>
+        /// <param name="authenticator">Authenticator for wrapper</param>
         public HttpClientWrapper(IConfigServerClientAuthenticator authenticator)
         {
             this.authenticator = authenticator;
+            client = new HttpClient();
         }
 
-        public HttpResponseMessage Get(Uri uri)
-        {
-            return GetAsync(uri).Result;
-        }
-
+        /// <summary>
+        /// Gets Uri Async
+        /// </summary>
+        /// <param name="uri">Uri</param>
+        /// <returns>HttpResponseMessage</returns>
         public async Task<HttpResponseMessage> GetAsync(Uri uri)
-        {
-            using (var httpClient = new HttpClient())
-            {              
-                return await authenticator.ApplyAuthentication(httpClient).GetAsync(uri);                
-            }
+        {      
+            return await authenticator.ApplyAuthentication(client).GetAsync(uri);  
         }
     }
 }

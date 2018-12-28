@@ -11,7 +11,7 @@ namespace ConfigServer.Core
         /// <summary>
         /// Initializes ConfigInstance with empty configuration
         /// </summary>
-        public ConfigInstance() : base(typeof(TConfig))
+        public ConfigInstance() : base(typeof(TConfig), false)
         {
             Configuration = new TConfig();
         }
@@ -19,8 +19,8 @@ namespace ConfigServer.Core
         /// <summary>
         /// Initializes ConfigInstance with empty configuration
         /// </summary>
-        /// <param name="clientId">Client Id</param>
-        public ConfigInstance(string clientId) : base(typeof(TConfig), clientId)
+        /// <param name="configurationIdentity">Configuration identity</param>
+        public ConfigInstance(ConfigurationIdentity configurationIdentity) : base(typeof(TConfig),false, configurationIdentity)
         {
             Configuration = new TConfig();
         }
@@ -29,8 +29,8 @@ namespace ConfigServer.Core
         /// Initializes ConfigInstance with supplied configuration
         /// </summary>
         /// <param name="config">configuration</param>
-        /// <param name="clientId">Client Id</param>
-        public ConfigInstance(TConfig config,string clientId) : base(typeof(TConfig),clientId)
+        /// <param name="configurationIdentity">Configuration identity</param>
+        public ConfigInstance(TConfig config, ConfigurationIdentity configurationIdentity) : base(typeof(TConfig),false, configurationIdentity)
         {
             Configuration = config;
         }
@@ -58,8 +58,6 @@ namespace ConfigServer.Core
         /// <param name="value">value of configuration</param>
         /// <exception cref="InvalidCastException">When object is not of the same type as generic type parameter.</exception>
         public override void SetConfiguration(object value) => Configuration = (TConfig)value;
-
-
 
     }
 }

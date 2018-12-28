@@ -1,70 +1,67 @@
 ﻿import { Component, OnInit } from '@angular/core';
-import { ConfigurationClientDataService } from '../dataservices/client-data.service';
-import { ConfigurationClient } from '../interfaces/client';
-import { Group } from '../interfaces/configurationSetDefintion';
 import { Router } from '@angular/router';
+import { ConfigurationClientGroupDataService } from '../dataservices/clientgroup-data.service';
+import { UserPermissionService } from '../dataservices/userpermission-data.service';
+import { IConfigurationClientGroup } from '../interfaces/configurationClientGroup';
 
 @Component({
     template: `
-        <h2>Clients</h2>
-        <button type="button" (click)="createNew()">Create</button>
-        <div class="break"></div>
-        <div class="group" *ngFor="let group of clients">
-            <h3>{{group.key}}</h3>
-            <div class="item" *ngFor="let client of group.items">
-                <h3>{{client.name}}</h3>
-                <p>Id: {{client.clientId}}</p>
-                <p>{{client.enviroment}}</p>
-                <p>{{client.description}}</p>
-                <button type="button" (click)="goToClient(client.clientId)">Manage configurations</button>
-                <button type="button" (click)="editClient(client.clientId)">Edit client</button>
+    <button id="createClientBtn" *ngIf="canEditClients" type="button" mat-raised-button color="primary" (click)="createNewClient()"><span class="glyphicon glyphicon-plus"></span> Add Client</button>
+    <button id="createGroupBtn" *ngIf="canEditGroups" type="button" mat-raised-button color="primary" (click)="createNewGroup()"><span class="glyphicon glyphicon-plus"></span> Add Group</button>
+    <hr />
+    <div class="row">
+        <div id="group-panel-{{group.groupId}}" class="col-sm-6 col-md-4 group-panel"  *ngFor="let group of groups">
+            <div class="thumbnail">
+                <div *ngIf="group.imagePath"><img class="img-responsive home-group-img" src="Resource/ClientGroupImages/{{group.imagePath}}" /></div>
+                <div class="category"></div>
+                <div class="caption">
+                    <h3 class="home-group-name">{{group.name}}</h3>
+                    <p class="home-group-id">{{group.groupId}}</p>
+                    <hr />
+                    <button id="manage-group-btn-{{group.groupId}}" type="button" mat-raised-button color="primary" (click)="manageGroupClients(group)">Manage group</button>
+                    <button id="edit-group-btn-{{group.groupId}}" *ngIf="canEditGroups" type="button" mat-raised-button color="primary" (click)="editGroup(group)">Edit group</button>
+                </div>
             </div>
         </div>
-`
+    </div>
+    <button id="manage-group-btn" type="button" mat-raised-button color="primary" (click)="manageClientsWithNoGroup()">Manage clients not in group</button>
+`,
 })
 export class HomeComponent implements OnInit {
-    clients: Group<string, ConfigurationClient>[];
+    public groups: IConfigurationClientGroup[];
+    public canEditGroups = false;
+    public canEditClients = false;
 
-    constructor(private clientDataService: ConfigurationClientDataService, private router: Router) {
-
+    constructor(private clientDataService: ConfigurationClientGroupDataService, private permissionService: UserPermissionService, private router: Router) {
+        this.groups = new Array<IConfigurationClientGroup>();
     }
 
-    ngOnInit(): void {
-        this.clientDataService.getClients()
-            .then(returnedClients => this.mapClients(returnedClients));
+    public ngOnInit(): void {
+        this.clientDataService.getClientGroups()
+            .then((returnedClientGroups) => { this.groups = returnedClientGroups; });
+        this.permissionService.getPermission()
+            .then((permissions) => {
+                this.canEditClients = permissions.canEditClients;
+                this.canEditGroups = permissions.canEditGroups;
+            });
     }
 
-    goToClient(clientId: string) {
-        this.router.navigate(['/client', clientId]);
-    }
-
-    createNew() {
+    public createNewClient() {
         this.router.navigate(['/createClient']);
     }
 
-    mapClients(value: ConfigurationClient[]): void {
-        var grouping = new Array<ConfigurationClient[]>();
-        value.forEach((item) => {
-            var group: ConfigurationClient[] = grouping[item.group];
-            if (!group)
-                group = new Array<ConfigurationClient>();
-
-            group.push(item);
-            grouping[item.group] = group
-        });
-        var keys = Object.keys(grouping);
-        var items = new Array<Group<string, ConfigurationClient>>()
-        for (var i = 0; i < keys.length; i++) {
-            var key = keys[i];
-            var val: ConfigurationClient[] = grouping[key];
-            if (key == 'null')
-                key = '';
-            items.push({ 'key': key, 'items': val });
-        }
-        this.clients = items
+    public createNewGroup() {
+        this.router.navigate(['/createClientGroup']);
     }
 
-    editClient(clientId: string) {
-        this.router.navigate(['/editClient', clientId]);
+    public editGroup(selectedGroup: IConfigurationClientGroup) {
+        this.router.navigate(['/editClientGroup', selectedGroup.groupId]);
+    }
+
+    public manageClientsWithNoGroup() {
+        this.router.navigate(['/group']);
+    }
+    public manageGroupClients(selectedGroup: IConfigurationClientGroup) {
+        this.router.navigate(['/group', selectedGroup.groupId]);
     }
 }

@@ -9,21 +9,47 @@ namespace ConfigServer.Core
     public class ConfigurationIdentity
     {
         /// <summary>
-        /// Initialize new ConfigurationIdentity
+        /// Initialize new ConfigurationIdentity with ConfigurationClient
         /// </summary>
-        public ConfigurationIdentity(){}
-
-        /// <summary>
-        /// Initialize new ConfigurationIdentity with client id
-        /// </summary>
-        public ConfigurationIdentity(string clientId)
+        public ConfigurationIdentity(ConfigurationClient clientId, Version version)
         {
-            ClientId = clientId;
+            Client = clientId;
+            ServerVersion = version;
         }
 
         /// <summary>
-        /// ClientId for configuration
+        /// Client for configuration
         /// </summary>
-        public string ClientId { get; set; }
+        public ConfigurationClient Client { get; }
+
+        /// <summary>
+        /// Version of the configuration server
+        /// </summary>
+        public Version ServerVersion { get; }
+
+        /// <summary>
+        /// Determines whether this instance and another specified System.String object have the same value.
+        /// </summary>
+        /// <param name="obj">The string to compare to this instance.</param>
+        /// <returns>true if the value of the value parameter is the same as the value of this instance; otherwise, false. If value is null, the method returns false.</returns>
+        public override bool Equals(object obj)
+        {
+            var identity = obj as ConfigurationIdentity;
+            return identity != null && Client.Equals(identity.Client) && ServerVersion == identity.ServerVersion;
+        }
+
+        /// <summary>
+        /// Returns the hash code for this string.
+        /// </summary>
+        /// <returns> A 32-bit signed integer hash code.</returns>
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int result = Client.GetHashCode();
+                result = (result * 397) ^ ServerVersion.GetHashCode();
+                return result;
+            }
+        } 
     }
 }

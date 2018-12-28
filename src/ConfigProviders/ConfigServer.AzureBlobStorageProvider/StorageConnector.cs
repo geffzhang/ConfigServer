@@ -11,6 +11,8 @@ namespace ConfigServer.AzureBlobStorageProvider
         private readonly CloudBlobClient client;
         private readonly string container;
         const string indexFile = "clientIndex.json";
+        const string indexGroupFile = "clientGroupIndex.json";
+
 
         public StorageConnector(AzureBlobStorageRepositoryBuilderOptions options)
         {
@@ -33,35 +35,59 @@ namespace ConfigServer.AzureBlobStorageProvider
             return SetFileAsync(indexFile,value);
         }
 
-        public Task SetConfigFileAsync(string configId, string instanceId, string value)
+        public async Task SetConfigFileAsync(string configId, string instanceId, string value)
         {
-            return SetFileAsync(GetConfigPath(configId, instanceId), value);
+            var containerRef = client.GetContainerReference(container);
+            var entry = containerRef.GetBlockBlobReference(GetConfigPath(configId, instanceId));
+            await ArchiveIfExists(configId, instanceId, containerRef, entry);
+            await entry.UploadTextAsync(value);            
+        }
+
+        public Task<string> GetClientGroupRegistryFileAsync()
+        {
+            return GetFileAsync(indexGroupFile);
+        }
+
+        public Task SetClientGroupRegistryFileAsync(string value)
+        {
+            return SetFileAsync(indexGroupFile, value);
         }
 
         private async Task<string> GetFileAsync(string location)
         {
             var containerRef = client.GetContainerReference(container);
-            ICloudBlob entry = await containerRef.GetBlobReferenceFromServerAsync(location);
-            using (var stream = new MemoryStream())
-            {
-                await entry.DownloadToStreamAsync(stream);
-                var streamReader = new StreamReader(stream);
-                return await streamReader.ReadToEndAsync();
-            }
+            var entry = containerRef.GetBlockBlobReference(location);
+            var exists = await entry.ExistsAsync();
+            if (!exists)
+                return string.Empty;
+            return await entry.DownloadTextAsync();
         }
 
-        private async Task SetFileAsync(string location, string value)
+        private Task SetFileAsync(string location, string value)
         {
             var containerRef = client.GetContainerReference(container);
-            ICloudBlob entry = await containerRef.GetBlobReferenceFromServerAsync(location);
-            using (var stream = new MemoryStream())
+            var entry = containerRef.GetBlockBlobReference(location);
+            return entry.UploadTextAsync(value);
+        }
+
+        private async Task ArchiveIfExists(string configId, string instanceId, CloudBlobContainer containerRef, CloudBlockBlob existingFile)
+        {
+            if (!await existingFile.ExistsAsync())
+                return;
+            
+            var newPath = GetArchiveConfigPath(configId, instanceId);
+            var entry = containerRef.GetBlockBlobReference(newPath);
+            using (var stream = await existingFile.OpenReadAsync())
             {
-                var streamReader = new StreamWriter(stream);
-                await streamReader.WriteAsync(value);
                 await entry.UploadFromStreamAsync(stream);
             }
         }
 
         private string GetConfigPath(string configId, string clientId) => $"{clientId}/{configId}.json";
+
+        private string GetArchiveConfigPath(string configId, string clientId)
+        {
+            return $"Archive/{clientId}/{configId}_{DateTime.UtcNow.ToString("yyMMddHHmmssff")}.json";
+        }
     }
 }

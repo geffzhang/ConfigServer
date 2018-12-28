@@ -24,6 +24,8 @@ namespace ConfigServer.Server
             this.keySelector = keySelector;
         }
 
+        internal OptionSet(IEnumerable input, Func<TOption, string> keySelector, Func<TOption, string> descriptionSelector) : this((IEnumerable<TOption>)input, keySelector, descriptionSelector) { }
+
         /// <summary>
         /// Gets the element that has the specified key in the set.
         /// </summary>
@@ -62,12 +64,19 @@ namespace ConfigServer.Server
         /// <param name="key">The key to locate in the set</param>
         /// <returns>true if the set contains an element with the specified key; otherwise, false.</returns>
         public bool ContainsKey(string key) => source.ContainsKey(key);
-        
+
+        /// <summary>
+        /// Determines if option has a key that is in the set
+        /// </summary>
+        /// <param name="option">key being Queried</param>
+        /// <returns>Returns true if key is in the set, else false</returns>
+        public bool ContainsKey(object option) => option != null && ContainsKey(option.ToString());
+
         /// <summary>
         /// Returns an enumerator that iterates through the set
         /// </summary>
         /// <returns>An enumerator that iterates through the set</returns>
-        public IEnumerator<KeyValuePair<string, TOption>> GetEnumerator() => source.GetEnumerator();
+        public IEnumerator<TOption> GetEnumerator() => source.Values.GetEnumerator();
 
         /// <summary>
         /// Gets the option associated with the specified key.
@@ -143,10 +152,17 @@ namespace ConfigServer.Server
         /// <returns>Returns true if option has a key in the set, else false</returns>
         public bool OptionKeyInSet(object option)
         {
-            if (option is TOption)
-                return OptionKeyInSet((TOption)option);
+            if (option is TOption o)
+                return OptionKeyInSet(o);
             return false;
         }
+
+        /// <summary>
+        /// Gets Key from Option
+        /// </summary>
+        /// <param name="option">Option being Queried</param>
+        /// <returns>Key from Option</returns>
+        public string GetKeyFromOption(object option) => keySelector((TOption)option);
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();        
 
@@ -160,5 +176,4 @@ namespace ConfigServer.Server
             return result;
         }
     }
-
 }
